@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Outdoor Air Quality, Noise level Data - F Block</title>
+    <!-- Add Plotly.js library -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Add styling -->
+    <style>
+      body {
+        font-family: "Roboto", sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f3f3f3;
+      }
+
+      h1 {
+        color: #f6f7f8;
+        text-align: center;
+      }
+
+      .controls {
+        text-align: center;
+        margin: 20px;
+        background-color: #ecf0f1;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .plot-container {
+        border: 2px solid #bdc3c7;
+        border-radius: 15px;
+        background-color: #ffffff;
+        margin: 20px;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+      }
+
+      .last-timestamp {
+        text-align: center;
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      /* Responsive styles */
+      @media only screen and (max-width: 600px) {
+        .plot-container {
+          margin: 10px;
+        }
+      }
+
+      @media only screen and (min-width: 601px) and (max-width: 900px) {
+        .plot-container {
+          margin: 15px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Plotly Plot Containers -->
+    <div class="plot-container">
+      <div id="plot1"></div>
+    </div>
+    <!-- Controls -->
+    <div class="controls">
+      <label for="averagingSelect">Averaging Interval:</label>
+      <select id="averagingSelect">
+        <option value="15sec">15 Seconds</option>
+        <option value="30sec">30 Seconds</option>
+        <option value="1min">1 Minute</option>
+        <option value="2min" selected>2 Minutes</option>
+        <option value="5min">5 Minutes</option>
+        <option value="15min">15 Minutes</option>
+        <option value="30min">30 Minutes</option>
+      </select>
+      <div id="progressContainer" style="display: none; margin-top: 10px">
+        <div
+          id="progressBar"
+          style="width: 100%; background-color: #f3f3f3; border: 1px solid #ddd"
+        >
+          <div
+            id="progressFill"
+            style="
+              width: 0%;
+              height: 20px;
+              background-color: #4caf50;
+              transition: width 0.3s;
+            "
+          ></div>
+        </div>
+        <div id="progressText" style="text-align: center; margin-top: 5px">
+          Processing...
+        </div>
+      </div>
+    </div>
+    <div id="lastTimestamp1" class="last-timestamp"></div>
+
+    <!-- <div id="plot2" class="plot-container"></div>
+    <div id="lastTimestamp2" class="last-timestamp"></div>
+
+    <div id="plot3" class="plot-container"></div>
+    <div id="lastTimestamp3" class="last-timestamp"></div>
+
+    <div id="plot4" class="plot-container"></div>
+    <div id="lastTimestamp4" class="last-timestamp"></div>
+
+    <div id="plot5" class="plot-container"></div>
+    <div id="lastTimestamp5" class="last-timestamp"></div>
+
+    <div id="plot6" class="plot-container"></div>
+    <div id="lastTimestamp6" class="last-timestamp"></div>
+
+    <div id="plot7" class="plot-container"></div>
+    <div id="lastTimestamp7" class="last-timestamp"></div>
+
+    <div id="plot8" class="plot-container"></div>
+    <div id="lastTimestamp8" class="last-timestamp"></div> -->
+    <!-- Script for fetching and plotting data -->
+    <script>
+      // Utility function to pad single-digit numbers with leading zeros for consistent timestamp formatting
+      function pad2(number) {
+        return (number < 10 ? "0" : "") + number;
+      }
+
+      /**
+       * Function to average environmental data by fixed time intervals
+       * This reduces data density for better visualization and performance
+       * @param {Array} data - Array of data points with timestamp and sensor values
+       * @param {number} intervalMinutes - Averaging interval in minutes (0 for raw data)
+       * @returns {Array} Averaged data points
+       */
+      function averageData(data, intervalMinutes) {
+        if (intervalMinutes === 0) return data; // Return raw data if no averaging needed
+
+        // Sort data chronologically to ensure proper bucket assignment
+        data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const averaged = [];
+        const intervalMs = intervalMinutes * 60 * 1000; // Convert minutes to milliseconds
+
+        if (data.length === 0) return averaged;
+
+        // Determine the time range for averaging
+        const startTime = new Date(data[0].timestamp).getTime();
+        const endTime = new Date(data[data.length - 1].timestamp).getTime();
+
+        // Create time buckets and calculate averages for each bucket
+        for (
+          let bucketStart = startTime;
+          bucketStart <= endTime;
+          bucketStart += intervalMs
+        ) {
+          const bucketEnd = bucketStart + intervalMs;
+
+          // Collect all data points that fall within this time bucket
+          const bucketData = data.filter((point) => {
+            const pointTime = new Date(point.timestamp).getTime();
+            return pointTime >= bucketStart && pointTime < bucketEnd;
+          });
+
+          if (bucketData.length > 0) {
+            // Calculate average values for each environmental parameter
+            const avgPm25 =
+              bucketData.reduce((sum, p) => sum + p.pm25, 0) /
+              bucketData.length;
+            const avgPm10 =
+              bucketData.reduce((sum, p) => sum + p.pm10, 0) /
+              bucketData.length;
+            const avgTemp =
+              bucketData.reduce((sum, p) => sum + p.temperature, 0) /
+              bucketData.length;
+            const avgHum =
+              bucketData.reduce((sum, p) => sum + p.humidity, 0) /
+              bucketData.length;
+            const avgNoise =
+              bucketData.reduce((sum, p) => sum + p.noise, 0) /
+              bucketData.length;
+
+            // Store averaged data point with bucket start time as timestamp
+            averaged.push({
+              timestamp: new Date(bucketStart),
+              pm25: avgPm25,
+              pm10: avgPm10,
+              temperature: avgTemp,
+              humidity: avgHum,
+              noise: avgNoise,
+            });
+          }
+        }
+        return averaged;
+      }
+
+      /**
+       * Fetches environmental data from ThingSpeak API and generates interactive plots
+       * @param {number} channelId - The ThingSpeak channel ID to fetch data from
+       * @param {string} apiKey - API key for accessing the channel
+       * @param {string} plotId - HTML element ID where the plot will be rendered
+       * @param {string} lastTimestampId - HTML element ID for displaying the last data timestamp
+       * @param {string} location - Descriptive name of the monitoring location
+       */
+      function fetchDataAndPlot(
+        channelId,
+        apiKey,
+        plotId,
+        lastTimestampId,
+        location
+      ) {
+        // Construct API URL for fetching channel feeds
+        const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${apiKey}&results=8000`;
+
+        // Fetch data from ThingSpeak API
+        fetch(url)
+          .then((response) => response.json())
+          .then((data) => {
+            const feeds = data.feeds;
+
+            // Filter data to include only entries from October 5th, 2025 onwards
+            const startDate = new Date("2025-10-05T00:00:00Z");
+            const filteredFeeds = feeds.filter(
+              (feed) => new Date(feed.created_at) >= startDate
+            );
+
+            // Extract and parse sensor values from API response fields
+            // field1: Temperature, field2: Humidity, field6: PM2.5, field7: PM10, field8: Noise
+            const rawData = [];
+            filteredFeeds.forEach((feed) => {
+              const date = new Date(feed.created_at);
+              rawData.push({
+                timestamp: date, // Store Date object for accurate time calculations
+                pm25: parseFloat(feed.field6), // Particulate matter 2.5 micrometers
+                pm10: parseFloat(feed.field7), // Particulate matter 10 micrometers
+                temperature: parseFloat(feed.field1), // Ambient temperature in Celsius
+                humidity: parseFloat(feed.field2), // Relative humidity percentage
+                noise: parseFloat(feed.field8), // Noise level in decibels A-weighted
+              });
+            });
+
+            // Determine averaging interval based on user selection from dropdown menu
+            const averagingSelect = document.getElementById("averagingSelect");
+            let interval = 0;
+            switch (averagingSelect.value) {
+              case "15sec":
+                interval = 0.25; // Convert 15 seconds to minutes
+                break;
+              case "30sec":
+                interval = 0.5; // Convert 30 seconds to minutes
+                break;
+              case "1min":
+                interval = 1;
+                break;
+              case "2min":
+                interval = 2;
+                break;
+              case "5min":
+                interval = 5;
+                break;
+              case "15min":
+                interval = 15;
+                break;
+              case "30min":
+                interval = 30;
+                break;
+            }
+
+            // Display progress bar to provide user feedback during data processing
+            const progressContainer =
+              document.getElementById("progressContainer");
+            const progressFill = document.getElementById("progressFill");
+            const progressText = document.getElementById("progressText");
+            progressContainer.style.display = "block";
+            progressFill.style.width = "0%";
+            progressText.textContent = "Processing...";
+
+            // Simulate progress animation for better user experience during averaging
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+              progress += 10;
+              progressFill.style.width = `${progress}%`;
+              progressText.textContent = `Processing... ${progress}%`;
+              if (progress >= 100) {
+                clearInterval(progressInterval);
+                progressContainer.style.display = "none";
+              }
+            }, 100);
+
+            const averagedData = averageData(rawData, interval);
+
+            // Extract arrays for plotting with multi-line timestamp format
+            const timestamps = averagedData.map((d) => {
+              const date = new Date(d.timestamp);
+              const timeStr = `${pad2(date.getHours())}:${pad2(
+                date.getMinutes()
+              )}:${pad2(date.getSeconds())}`;
+              const dateStr = `${pad2(date.getDate())}-${pad2(
+                date.getMonth() + 1
+              )}-${date.getFullYear()}`;
+
+              // Show date only at 6-hour intervals (0, 6, 12, 18 hours)
+              const hour = date.getHours();
+              if (hour % 6 === 0) {
+                return `${timeStr}<br>${dateStr}`;
+              } else {
+                return `${timeStr}<br> `;
+              }
+            });
+            const pm25 = averagedData.map((d) => d.pm25);
+            const pm10 = averagedData.map((d) => d.pm10);
+            const temperature = averagedData.map((d) => d.temperature);
+            const humidity = averagedData.map((d) => d.humidity);
+            const noise = averagedData.map((d) => d.noise);
+
+            // Create Plotly traces with better colors and modes
+            const trace_pm25 = {
+              x: timestamps,
+              y: pm25,
+              mode: "lines+markers",
+              name: "PM2.5(µg/m³)",
+              line: { color: "red" },
+              marker: { size: 4 },
+            };
+            const trace_pm10 = {
+              x: timestamps,
+              y: pm10,
+              mode: "lines+markers",
+              name: "PM10(µg/m³)",
+              line: { color: "orange" },
+              marker: { size: 4 },
+            };
+            const trace_temperature = {
+              x: timestamps,
+              y: temperature,
+              mode: "lines+markers",
+              name: "Temperature(°C)",
+              line: { color: "blue" },
+              marker: { size: 4 },
+            };
+            const trace_humidity = {
+              x: timestamps,
+              y: humidity,
+              mode: "lines+markers",
+              name: "Humidity(%)",
+              line: { color: "green" },
+              marker: { size: 4 },
+            };
+            const trace_noise = {
+              x: timestamps,
+              y: noise,
+              mode: "lines+markers",
+              name: "Noise(dBA)",
+              line: { color: "purple" },
+              marker: { size: 4 },
+            };
+
+            // Create layout for the plot with improvements
+            const layout = {
+              title: {
+                text: `Outdoor Air Quality Data - ${location}`,
+                font: {
+                  size: 24,
+                  color: "#2c3e50",
+                  family: "Arial, sans-serif",
+                },
+              },
+              xaxis: {
+                title: {
+                  text: "Timestamp",
+                  font: { size: 16, color: "#34495e" },
+                },
+                type: "category",
+                rangeslider: { visible: true },
+                gridcolor: "#ecf0f1",
+                tickfont: { size: 12, color: "#34495e" },
+                tickmode: "auto",
+                nticks: 10, // Limit number of ticks to reduce crowding
+                tickangle: 0, // Keep timestamps horizontal
+              },
+              yaxis: {
+                title: {
+                  text: "Values",
+                  font: { size: 16, color: "#34495e" },
+                },
+                autorange: true,
+                gridcolor: "#ecf0f1",
+                tickfont: { size: 12, color: "#34495e" },
+              },
+              showlegend: true,
+              legend: {
+                x: 0.5,
+                y: -0.65,
+                xanchor: "center",
+                yanchor: "bottom",
+                orientation: "h",
+                font: { size: 14, color: "#34495e" },
+                bgcolor: "#ecf0f1",
+                bordercolor: "#bdc3c7",
+                borderwidth: 1,
+              },
+              height: 650,
+              width: 1400,
+              plot_bgcolor: "#ffffff",
+              paper_bgcolor: "#f8f9fa",
+              margin: { l: 40, r: 40, t: 80, b: 0 },
+              annotations: [
+                {
+                  x: 1,
+                  y: 1,
+                  xref: "paper",
+                  yref: "paper",
+                  text: `Number of Entries: ${timestamps.length} | Averaging: ${
+                    averagingSelect.options[averagingSelect.selectedIndex].text
+                  }`,
+                  showarrow: false,
+                  font: {
+                    size: 14,
+                    color: "#34495e",
+                  },
+                },
+              ],
+            };
+
+            // Combine traces and layout, and plot the chart
+            Plotly.newPlot(
+              plotId,
+              [
+                trace_pm25,
+                trace_pm10,
+                trace_temperature,
+                trace_humidity,
+                trace_noise,
+              ],
+              layout
+            );
+
+            // Print the last timestamp
+            const lastTimestamp = timestamps[timestamps.length - 1];
+            document.getElementById(
+              lastTimestampId
+            ).innerHTML = `Last Data_Entry_at: ${lastTimestamp}`;
+          })
+          .catch((error) =>
+            console.error(`Error fetching data for Channel ${location}:`, error)
+          );
+      }
+
+      // Event listener for dropdown change
+      document
+        .getElementById("averagingSelect")
+        .addEventListener("change", () => {
+          fetchDataAndPlot(
+            3045189,
+            "TJWMDCB4N2C1WPCE",
+            "plot1",
+            "lastTimestamp1",
+            "F Block"
+          );
+        });
+
+      // Initial call
+      fetchDataAndPlot(
+        3045189,
+        "TJWMDCB4N2C1WPCE",
+        "plot1",
+        "lastTimestamp1",
+        "F Block"
+      );
+      // fetchDataAndPlot(
+      //   2248876,
+      //   "DO0NQO7N7M82AZ8T",
+      //   "plot2",
+      //   "lastTimestamp2",
+      //   "Node_1_Caliberated_Data"
+      // );
+      // fetchDataAndPlot(
+      //   2291470,
+      //   "XRLCM3ELMRAIKT5O",
+      //   "plot3",
+      //   "lastTimestamp3",
+      //   "Node_2_Raw_Data"
+      // );
+      // fetchDataAndPlot(
+      //   2248878,
+      //   "JQK1ZCZRECCEXUYS",
+      //   "plot4",
+      //   "lastTimestamp4",
+      //   "Node_2_Caliberated_Data"
+      // );
+      // fetchDataAndPlot(
+      //   2291471,
+      //   "YFJEV8XR9DRX758F",
+      //   "plot5",
+      //   "lastTimestamp5",
+      //   "Node_3_Raw_Data"
+      // );
+      // fetchDataAndPlot(
+      //   2248879,
+      //   "ZBVS6X0LZ725J3FP",
+      //   "plot6",
+      //   "lastTimestamp6",
+      //   "Node_3_Caliberated_Data"
+      // );
+      // fetchDataAndPlot(
+      //   2291473,
+      //   "9RI66ZS87EZ77UFF",
+      //   "plot7",
+      //   "lastTimestamp7",
+      //   "Node_4_Raw_Data"
+      // );
+      // fetchDataAndPlot(
+      //   2248880,
+      //   "4LCNXDZ2Z6QF0I7P",
+      //   "plot8",
+      //   "lastTimestamp8",
+      //   "Node_4_Caliberated_Data"
+      // );
+    </script>
+  </body>
+</html>
